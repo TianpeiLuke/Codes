@@ -1,0 +1,122 @@
+function [X, history, epsilon] = conjugate_grad(X0, Ky, param, option, sel)
+%% conjugate gradient on Grassmann manifold 
+% Input: 
+%   X0: N x k,  initial orthogonal matrix
+%   Ky: N x N,  the observed Gram matrix Y*Y'
+% param
+%    .N: # of samples
+%    .s: amient dimension of Y
+%    .k: intrinsic dimension of X
+%    .T: resolution for optimal step size search
+%    .beta: 1/beta is the noise variance; change the condition number of Kx
+%    .maxIter: maximum iteration of conjugate gradient step;
+%
+% option
+%      .kernelMethod:  
+%          'linear' for linear kernel
+%          'rbf' for Gaussian RBF kernel
+%       .kernelParm:
+%           if 'linear', no need
+%           elseif 'rbf', 
+%               for variance sigma_k
+%           
+% Output:
+%    X: N x k, optimal subbasis for latent subspace
+% history
+%    history_X: cell array for intermediate X
+%    history_error
+%
+%
+% written by Tianpei Xie, May 11 2015
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+N= param.N;
+s= param.s;
+k= param.k;
+T= param.T;
+beta = param.beta;
+maxIter = param.maxIter;
+history.X = cell(maxIter+1);
+history.epsilon = zeros(1,maxIter+1);
+history.objval = zeros(1,maxIter+1);
+history.Gnorm = zeros(1,maxIter+1);
+
+[Us, Ss] = eig(Ky);
+[~,Idx] = sort(diag(Ss),'descend');
+Us = Us(:,Idx);
+
+%% Initialization
+Gm0 = grad_man_GPLM(Ky, X0, param, option);
+H = -Gm0;
+G=  Gm0;
+G_pre = Gm0;
+[U,S,V] = svd(H,0);
+X = X0;
+matparm.U{1} = U;
+matparm.V{1} = V;
+matparm.S{1} = S;
+
+history.X{1} = X;
+epsilon = k-trace(X'*Us(:,1:k));
+history.epsilon(1) = epsilon;
+objval = logP(Ky, X, param, option); 
+history.objval(1) = objval;
+history.Gnorm(1) = norm(Gm0);
+for t=1:maxIter
+   history.iter = t+1; 
+   display(sprintf('iter = %d; neg log-likelihood: %.5f; subspace-dist: %.2f',t,objval,epsilon)) 
+   %% move on geodesic of Grassmannian
+   display('compute step-size..')
+   tmin = step_size(X, Ky, matparm, param, option);
+   Xnext=  X*V*diag(cos(tmin*diag(S)))*V' + U*diag(sin(tmin*diag(S)))*V'; 
+   
+   %% compute natural gradient on geodesic at Xt+1
+   
+   Gm = grad_man_GPLM(Ky, Xnext, param, option);
+   history.Gnorm(t+1) = norm(Gm)/sqrt(N*k);
+   display(sprintf('the norm of gradient: %.2f',norm(Gm)/sqrt(N*k)))
+   if(norm(Gm)/sqrt(N*k) <param.thresh )
+       return
+   end
+   
+   %% gradient adjustment via parallel translation from Xt to Xt+1
+   if sel == 2
+   tH = -X*V*diag(sin(tmin*diag(S)))*S*V' + U*diag(cos(tmin*diag(S)))*S*V';
+   tG = G - (X*V*diag(sin(tmin*diag(S)))+ U*(eye(k) - diag(cos(tmin*diag(S)))))*U'*G; 
+  
+   %% update conjugate gradient 
+    rho = trace((Gm- tG)'*Gm)/trace(G_pre'*G_pre); 
+    H = -Gm+ rho*tH;
+    if (mod((k+1),k*(N-k)) == 0)
+     H = -Gm;
+    end
+   else
+        H = -Gm;
+   end
+   
+
+    
+   %% SVD of conjugate gradient  
+   [U,S,V] = svd(H,0); 
+   
+   %% update Xt to Xt+1
+   X = Xnext;
+   history.X{t+1} = X;
+   epsilon = k-trace(X'*Us(:,1:k));
+   history.epsilon(t+1) = epsilon;
+   objval = logP(Ky, X, param, option); 
+   history.objval(t+1) = objval;
+   matparm.U{1} = U;
+   matparm.V{1} = V;
+   matparm.S{1} = S;
+   if epsilon <= param.thresh
+       return;
+   end
+end
+
+
+
+
+
+
+
