@@ -1,0 +1,79 @@
+function [postp,cidx,logP] = TWCNB_posterior(obj,test,varargin)
+
+if nargin < 2
+    error(message('stats:NaiveBayes:posterior:TooFewInputs'));
+end
+
+if ~isnumeric(test) 
+    error(message('stats:NaiveBayes:predict:TestBadType'));
+end
+
+if ~isreal(test)
+    error(message('stats:NaiveBayes:predict:TestComplexType'));
+end
+
+if size(test,2)~= obj.NDims
+      error(message('stats:NaiveBayes:BadTestSize', obj.NDims));
+end
+
+pnames = {'handlemissing'};
+dflts = {'off'};
+handleMissing = internal.stats.parseArgs(pnames, dflts, varargin{:});
+
+handleMissing = internal.stats.getParamVal(handleMissing,{'on' 'off'},'HandleMissing');
+
+wasAnyNans = any(isnan(test),2);
+if strcmp(handleMissing,'off')
+    wasInvalid = wasAnyNans;
+else
+    wasInvalid = all(isnan(test),2);
+end
+
+% if isscalar(obj.Dist) && strcmp(obj.Dist,'mn')
+%     testBad = any(test<0 |test ~= round(test),2);
+%     if any(testBad)
+%          warning(message('stats:NaiveBayes:posterior:BadDataforMN'));
+%        wasInvalid = wasInvalid | testBad;
+%     end
+% end
+
+hadInvalid = any(wasInvalid);
+if hadInvalid
+    test(wasInvalid,:)= [];
+end
+
+log_condPdf = getlogCondPDF(obj, test, handleMissing);
+
+if nargout >= 3
+    [cidx, postp, logP] = getClassIdx(obj,log_condPdf);
+    %convert  class index to the corresponding class levels
+    cidx = cidx2glevel(cidx, obj.ClassLevels);
+    
+    if hadInvalid
+        [cidx,postp,logP] = dfswitchyard('statinsertnan',wasInvalid,cidx,postp,logP);
+    end
+    if strcmp(handleMissing,'on')
+        logP(wasAnyNans) = NaN;
+    end
+else
+    [cidx,postp] = getClassIdx(obj,log_condPdf);
+    %convert integer class index to the corresponding class levels
+    cidx = cidx2glevel(cidx,obj.ClassLevels);
+    
+    if hadInvalid
+        [cidx,postp] = dfswitchyard('statinsertnan',wasInvalid,cidx,postp);
+    end
+end
+
+end %posterior
+
+%--------------------
+%handle NaN values in cidx
+function cidx = cidx2glevel(cidx,ClassLevels)
+
+isCidxNaN= isnan(cidx);
+cidx = ClassLevels(cidx(~isCidxNaN),:);
+if any(isCidxNaN)
+    cidx= dfswitchyard('statinsertnan',isCidxNaN,cidx);
+end
+end
