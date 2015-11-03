@@ -1,0 +1,9 @@
+function objval = logP(Ky, X, param, option)
+
+if strcmp(option.kernelMethod, 'linear')
+    K = X_temp*X_temp' + 1/(beta)*eye(N); 
+    L(i) = - 1/2*trace(K\Ky); 
+ elseif strcmp(option.kernelMethod, 'rbf')  
+    K = calckernel_v2(option,X_temp)+ 1/(beta)*eye(N);
+    L(i) = -s/2*log(det(K))- 1/2*trace(K\Ky);
+ end
