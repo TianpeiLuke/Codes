@@ -1,0 +1,16 @@
+function gd_gamma = grad_gamma_GPLM_weight(Ky, X, gamma, param, option)
+N= param.N;
+s= param.s;
+k= param.k;
+beta = param.beta;
+alpha = param.alpha;
+
+
+if strcmp(option.kernelMethod, 'linear')
+   md = diag(X'*Ky*X)/(alpha*s);
+   pweight = beta./(1+ alpha*beta*gamma.^2);
+   
+   gd_gamma = -s*pweight + (pweight.^2).*md;    
+elseif strcmp(option.kernelMethod, 'rbf')
+    
+end
